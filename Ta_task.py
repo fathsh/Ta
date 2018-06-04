@@ -31,8 +31,8 @@ class TaTask():
                     print(callbak2())
                 if (callbak2 and callbak2()) or (callbak2 is None):
                     return callback()
-            except:
-                pass
+            except Exception as e:
+                print('\033[1;31m{}\n{} \033[0m'.format(e,callback))
             time.sleep(0.5)
         raise
 
@@ -48,7 +48,7 @@ class TaTask():
             pass
         time.sleep(waittime if waittime else 0)
 
-    def super_find_eles(self,value,by=By.CSS_SELECTOR,find_ele_time=5,frames=None,remark=None,return_all=False,waittime=None,log=None):
+    def super_find_eles(self,value,by=By.CSS_SELECTOR,find_ele_time=5,ele_parent=None,frames=None,remark=None,return_all=False,waittime=None,log=None):
         NoSuchFrame = False
         for i in range(1,find_ele_time*10):
             if frames:
@@ -62,25 +62,26 @@ class TaTask():
                         elif frame==-1:
                             self.driver.switch_to.frame(self.super_find_eles('iframe',return_all=True)[-1])
                     except NoSuchFrameException:
-                        print('{} NoSuchFrameException 【{}】 find time:{}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),frame,i))
+                        # print('{} NoSuchFrameException 【{}】 find time:{}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),frame,i))
                         NoSuchFrame=True
                         break
             if NoSuchFrame:
                 time.sleep(0.1)
                 NoSuchFrame=False
                 continue
-            eles = self.driver.find_elements(by, value)
+            eles = ele_parent.find_elements(by, value) if ele_parent else self.driver.find_elements(by, value)
             if eles:
                 if waittime:
                     time.sleep(waittime)
-                print('{} find the element{} 【{}】 find time:{}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                                        's' if return_all else '',remark if remark else value,i))
+                # print('{} find the element{} 【{}】 find time:{}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                #                                         's' if return_all else '',remark if remark else value,i))
                 if log:
                     self.log_write(log)
                 return eles if return_all else eles[0]
             else:
-                print('{} NoSuchElementException 【{}】 find time:{}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                                                           remark if remark else value,i))
+                pass
+                # print('{} NoSuchElementException 【{}】 find time:{}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                #                                                            remark if remark else value,i))
             time.sleep(0.1)
         else:
             msgbox('can not find element!')
@@ -130,14 +131,18 @@ class TaTask():
         return [self.driver.execute_script('return arguments[0].querySelector("select,input").value', x) for x in dds]
 
     def set_value(self,ele,value,key=None,sel=None):
-        control=ele if ele.tag_name in ["select", "input"] else self.driver.execute_script(
-            'return arguments[0].querySelector("select,input")', ele)
+        # control=ele if ele.tag_name in ["select", "input"] else self.driver.execute_script(
+        #     'return arguments[0].querySelector("select,input")', ele)
+        control=ele if ele.tag_name in ["select", "input"] else self.wait_Exception(
+            lambda :self.super_find_eles('select,input',ele_parent=ele))
         if control.tag_name == 'input':     #文本框
             control.send_keys(value) if key in self.onchange_key else self.driver.execute_script(
                 'arguments[0].value=arguments[1]', control, value)
                 # control.clear()
                 # control.send_keys(value)
-            if value==self.driver.execute_script('return arguments[0].value', control):
+
+
+            if value==self.wait_Exception(lambda :self.driver.execute_script('return arguments[0].value', control)):
                 return
             else:
                 msgbox('set value wrong!   {}'.format(value))
@@ -157,16 +162,17 @@ class TaTask():
                 self.driver.switch_to.default_content()
                 self.driver.switch_to.frame('frame-tab-sysinfo_fundInfo-add-fund')
                 self.driver.switch_to.frame('layui-layer-iframe1')
-                # t=ele.find_element_by_css_selector('div>span').get_attribute('value')
-                #
-                #
-                # msgbox(t)
                 return
             else:   # 单选
                 ops = control.find_elements_by_css_selector('option')
                 value_to_set = value.replace('：', ':').split(':')[0]
                 self.driver.execute_script('arguments[0].setAttribute("style", arguments[1])', control, "display:block")
-                self.wait_Exception(lambda :Select(control).select_by_value(value_to_set))
+                try:
+                    Select(control).select_by_value(value_to_set)
+                except:
+                    control.location_once_scrolled_into_view
+                    Select(control).select_by_value(value_to_set)
+                # self.wait_Exception(lambda :Select(control).select_by_value(value_to_set)
                 # if self.wait_Exception(lambda :[x.text for x in ops if x.is_selected()][0].replace('：', ':').split(':')[0])==value_to_set:
                 sel_span=('{}+div>a>span').format(sel) if sel else ('div>a>span')
                 self.driver.execute_script('arguments[0].innerText=arguments[1]', parent.find_element_by_css_selector(sel_span), value)
@@ -177,7 +183,7 @@ class TaTask():
         # print(eles)
         t=time.time()
         for key,value in datas.items():
-            print(key,value,eles[key])
+            # print(key,value,eles[key])
             self.set_value(eles[key],value,key)
         if remark:
             print('\033[1;33m{} {}\033[0m'.format(remark,time.time()-t))
