@@ -19,11 +19,8 @@ def f(a):
 def c(f1):
     print(f1())
 
-a=[1]
-try:
-    b=a[2]
-except Exception as e:
-    print('\033[1;31m{}\033[0m'.format(e))
+a=[1,2,3]
+print(a[::-1])
 exit()
 
 

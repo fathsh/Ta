@@ -33,18 +33,17 @@ class TaTask():
             time.sleep(0.5)
         raise
 
-    def super_click(self,ele,mode=0,waittime=None):
+    def super_click(self,ele,mode=1,waittime=0):
         '''点击元素的函数'''
         if mode==0:            #js
             self.driver.execute_script('arguments[0].click()', ele)
-            ele.click()
         elif mode==1:         #selenium API
             ele.click()
         elif mode==2:         #    ActionChains  simulate
             ActionChains(self.driver).click(ele).perform()
         elif mode==3:         #    dm simulate
             pass
-        time.sleep(waittime if waittime else 0)
+        time.sleep(waittime)
 
     def super_find_eles(self,value,by=By.CSS_SELECTOR,find_ele_time=5,ele_parent=None,frames=None,remark=None,return_all=False,waittime=None,log=None):
         '''定位元素函数，默认参数：by=By.CSS_SELECTOR->查找方式，默认用CSS,find_ele_time=5->查找时间，默认5秒,ele_parent=None->父元素
@@ -89,6 +88,20 @@ class TaTask():
                 self.log_write(log,fail=True)
             return
 
+    def compare_values(self,data_excel,frames=None,length=None):
+        '''比对'''
+        data_sys =self.get_data_sys(frames=frames,length=length)
+        result_compare={}
+        for key in data_excel:
+            if key not in data_sys:
+                continue
+            if self.compaer_value(data_excel[key],data_sys.get(key)):
+                pass
+                # print(key,data_excel[key],data_sys.get(key),'correctly!')
+            else:
+                result_compare.update({key:(data_excel[key],data_sys[key])})
+        return result_compare      #such as {'基金名称': ('和聚(玉融)量化空盈9号私募基金', '广发理财-招商-2')}
+
     def compaer_value(self,value_excel,value_sys):
         '''compaer_excel_sys_data函数的子函数,value_excel->参数表数据,value_sys->ta系统数据'''
         if value_excel != '':                 #取:左边的数据
@@ -98,19 +111,14 @@ class TaTask():
         except:      #如报错比较字符串
             return True if value_excel == value_sys else False
 
-    def compaer_excel_sys_data(self,data_excel,data_sys):
-        '''比对函数,比对多个数据,value_excel->参数表数据,value_sys->ta系统数据
-        ,return such as {'基金名称': ('和聚(玉融)量化空盈9号私募基金', '广发理财-招商-2')...} '''
-        return {key:(data_excel[key],data_sys[key]) for key in data_excel if not self.compaer_value(data_excel[key],data_sys.get(key))
-                and key in data_sys}
-
     def get_data_sys(self,frames=None,log=None,length=None):
         '''取系统参数值,return such as {'基金名称':'广发理财-招商-2'....} '''
         for i in range(5):      #每秒取一次
             try:
                 dts = self.super_find_eles('dt', frames=frames,return_all=True,log=log)
                 dds = self.super_find_eles('dd', return_all=True)
-                if length and len(dts)!=length:             #如果字段数量不等于指定数量length，则time.sleep(1)，避免网络延迟原因
+                if length and len(dds)<length:             #如果字段数量不等于指定数量length，则time.sleep(1)，避免网络延迟原因
+                    print(len(dds))
                     time.sleep(1)
                     continue
                 return dict(zip(self.get_dts_innerTexts(dts),self.get_dds_values(dds)))
@@ -119,12 +127,12 @@ class TaTask():
         else:
             raise
 
-    def get_eles_to_set(self,keys=None,frames=None):
+    def get_eles_to_set(self,keys=None,frames=None,value='dd'):
         '''取要设置参数的eles,keys->参数表的字段名称，frames->iframe,return such as{'基金名称':ele1....}'''
         def f():
-            dds = self.super_find_eles('dd', return_all=True, frames=frames)
-            return {key: ele for key, ele in zip(self.get_dts_innerTexts(), dds)
-                    if key in keys} if keys else dict(zip(self.get_dts_innerTexts(), dds))
+            eles= self.super_find_eles(value, return_all=True, frames=frames)
+            return {key: ele for key, ele in zip(self.get_dts_innerTexts(), eles)
+                    if key in keys} if keys else dict(zip(self.get_dts_innerTexts(), eles))
         return self.skip_Exception(f)                #用skip_Exception运行，避免报错
 
     def get_dts_innerTexts(self,dts=None):
@@ -137,14 +145,27 @@ class TaTask():
         '''取参数值，dds->参数值元素,return such as['广发理财-招商-2','870022'...]'''
         return [self.driver.execute_script('return arguments[0].querySelector("select,input").value', x) for x in dds]      #用js，提高效率
 
-    def set_value(self,ele,value,key=None,sel=None):
+    def set_value(self,ele,value,key=None,sel=None,mode=0,sendkey=False):
         '''设置一个参数函数,ele->要设置参数的元素,value->参数值,key=None->字段名称,sel->span标签的selector'''
         control=ele if ele.tag_name in ["select", "input"] else self.skip_Exception(
             lambda :self.super_find_eles('select,input',ele_parent=ele))         #定位到select或者input标签
+        if key=='单位净值长度':
+            print('单位净值长度',mode)
         if control.tag_name == 'input':     #文本框
+            value_cur=self.driver.execute_script('return arguments[0].value',control)
+            if value_cur == value:
+                return
             self.driver.execute_script('arguments[0].style.backgroundColor=arguments[1]',control,self.background_color)     #改变背景色
-            control.send_keys(value) if key in self.onchange_key else self.driver.execute_script(
-                'arguments[0].value=arguments[1]', control, value)                      #如果key in self.onchange_key，用send_keys，否则用js设置
+            self.driver.execute_script('arguments[0].value=arguments[1]', control, value)
+            ActionChains(self.driver).send_keys_to_element(control,Keys.SPACE+Keys.BACKSPACE).perform()
+            # if mode==0:
+            #     if value_cur!='':
+            #         control.clear()
+            #     control.send_keys(value)
+            # if mode==1:
+            #     self.driver.execute_script('arguments[0].value=arguments[1]', control, value)
+                # control.clear() or control.send_keys(value) if key in self.onchange_key else self.driver.execute_script(
+                # 'arguments[0].value=arguments[1]', control, value)          #如果key in self.onchange_key，用send_keys，否则用js设置
             if value==self.skip_Exception(lambda :self.driver.execute_script('return arguments[0].value', control)):      #设置后再比对一次
                 return
             else:
@@ -175,24 +196,40 @@ class TaTask():
                 self.driver.execute_script('arguments[0].setAttribute("style", arguments[1])', control, "display:none")
                 return
 
-    def set_values(self,eles,datas,remark=None):
+    def set_values(self,eles,datas,remark=None,mode=0):
         '''设置多个参数函数,ele->要设置参数的元素,datas->参数值,'''
         t=time.time()
+        print(remark,mode)
         for key,value in datas.items():
-            self.skip_Exception(lambda :self.set_value(eles[key],value,key),remark=key)
+            self.skip_Exception(lambda :self.set_value(eles[key],value,key,mode=mode),remark=key)
         if remark:
             print('\033[1;33m{} {}\033[0m'.format(remark,time.time()-t))                    #黄色记录时间
+        self.check_invalid_data()
 
-    def form_submit(self,ele_btn,frames_label=None):
+    def form_submit(self,ele_btn,frames_label=None,waittime=0):
         '''提交表单,如发现非法数据，则报错'''
         try:
             ele_btn.click()
             ele_label = self.super_find_eles('label',frames=frames_label,find_ele_time=0.2)
             if ele_label:     #检查是否有报错
+                # ele_label.send_keys(ele_label.text)
                 print('\033[1;31m系统报错：{}\033[0m'.format(ele_label.text))      #红色
+                self.driver.execute_script("arguments[0].scrollIntoView()", ele_label)
                 raise
         except WebDriverException:
+            time.sleep(waittime)
             return None
+        time.sleep(waittime)
+
+    def check_invalid_data(self,frames_label=None):
+        ele_label = self.super_find_eles('label', frames=frames_label, find_ele_time=0.2)
+        if ele_label:
+            print('\033[1;31m系统报错：{}\033[0m'.format(ele_label.text))  # 红色
+            self.driver.execute_script("arguments[0].scrollIntoView()", ele_label)
+            raise
+        return
+
+
 
     def log_write(self,text,fail=False):
         self.log+='{} {} {}\n'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),text,'fail' if fail else 'success')
