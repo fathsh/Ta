@@ -10,6 +10,10 @@ from datetime import datetime
 
 LazyExcel = win32com.client.Dispatch('Lazy.LxjExcel')             #处理excel的函数
 
+class TaError(Exception):
+    pass
+
+
 class TaTask():
     '''Ta系统自动化框架，self.driver->selenium对象，self.background_color->设置参数的背景色'''
     def __init__(self):
@@ -24,14 +28,19 @@ class TaTask():
         '''忽略报错函数，解决以下问题：
         因网页跳转的不确定，程序在运行过程会遇到很多不确定的报错，此时需要等待一段时间再运行代码
         Example:self.skip_Exception(lambda :ele.click()),'''
+        flag=False
         for i in range(waitException_time*2):
             try:
                 if (callbak2 and callbak2()) or (callbak2 is None):
                     return callback()
             except Exception as e:
-                print('\033[1;31m{}\n{}\n{} \033[0m'.format(e,callback,remark))
+                if not flag:
+                    flag=True
+                    print('\033[1;31m{}\n{}\n{} \033[0m'.format(e,callback,remark))
+                print('\033[1;31m{}\033[0m'.format(i+1))
+                t=e
             time.sleep(0.5)
-        raise
+        raise TaError('{}|{}'.format(t,remark))
 
     def super_click(self,ele,mode=1,waittime=0):
         '''点击元素的函数'''
@@ -91,11 +100,13 @@ class TaTask():
     def compare_values(self,data_excel,frames=None,length=None):
         '''比对'''
         data_sys =self.get_data_sys(frames=frames,length=length)
+        # print(data_sys.get('净值公布日'))
+        # print(data_excel.get('净值公布日'))
         result_compare={}
         for key in data_excel:
             if key not in data_sys:
                 continue
-            if self.compaer_value(data_excel[key],data_sys.get(key)):
+            if self.compaer_value(data_excel[key],data_sys[key]):
                 pass
                 # print(key,data_excel[key],data_sys.get(key),'correctly!')
             else:
@@ -104,9 +115,11 @@ class TaTask():
 
     def compaer_value(self,value_excel,value_sys):
         '''compaer_excel_sys_data函数的子函数,value_excel->参数表数据,value_sys->ta系统数据'''
-        if value_excel != '':                 #取:左边的数据
-            value_excel = value_excel.replace('：', ':').split(':')[0]
+        # if value_excel != '':                 #取:左边的数据
+        #     value_excel = value_excel.replace('：', ':').split(':')[0]
         try:       #尝试相减比较
+            if value_excel != '':  # 取:左边的数据
+                value_excel = value_excel.replace('：', ':').split(':')[0]
             return True if float(value_excel) - float(value_sys.replace(',', '')) == 0 else False
         except:      #如报错比较字符串
             return True if value_excel == value_sys else False
@@ -131,6 +144,9 @@ class TaTask():
         '''取要设置参数的eles,keys->参数表的字段名称，frames->iframe,return such as{'基金名称':ele1....}'''
         def f():
             eles= self.super_find_eles(value, return_all=True, frames=frames)
+            # print(keys)
+            # print(eles)
+            # print(self.get_dts_innerTexts())
             return {key: ele for key, ele in zip(self.get_dts_innerTexts(), eles)
                     if key in keys} if keys else dict(zip(self.get_dts_innerTexts(), eles))
         return self.skip_Exception(f)                #用skip_Exception运行，避免报错
@@ -145,12 +161,10 @@ class TaTask():
         '''取参数值，dds->参数值元素,return such as['广发理财-招商-2','870022'...]'''
         return [self.driver.execute_script('return arguments[0].querySelector("select,input").value', x) for x in dds]      #用js，提高效率
 
-    def set_value(self,ele,value,key=None,sel=None,mode=0,sendkey=False):
+    def set_value(self,ele,value,key=None,sel=None,mode=0):
         '''设置一个参数函数,ele->要设置参数的元素,value->参数值,key=None->字段名称,sel->span标签的selector'''
         control=ele if ele.tag_name in ["select", "input"] else self.skip_Exception(
             lambda :self.super_find_eles('select,input',ele_parent=ele))         #定位到select或者input标签
-        if key=='单位净值长度':
-            print('单位净值长度',mode)
         if control.tag_name == 'input':     #文本框
             value_cur=self.driver.execute_script('return arguments[0].value',control)
             if value_cur == value:
@@ -170,22 +184,28 @@ class TaTask():
                 return
             else:
                 msgbox('set value wrong!   {}'.format(value))
-                control.clear()
-                control.send_keys(value)
-                raise
+                return
+            #     control.clear()
+            #     control.send_keys(value)
+            #     raise
         elif control.tag_name == 'select':                #下拉框
+
             parent = self.driver.execute_script('return arguments[0].parentNode', control)     #找到dd元素
             if control.get_attribute('multiple')=='true':    #多选
+                options = self.super_find_eles('option', ele_parent=control,return_all=True)
+                values_options = [self.driver.execute_script('return arguments[0].value', x) for x in options]
+                # print(values_options)
                 value_to_set=[x.replace('：', ':').split(':')[0] for x in value.split(',')]     #取冒号左边，如
-                inp=parent.find_element_by_css_selector('input')                                #找到input元素，可以发送键盘消息
+                inp=self.super_find_eles('input',ele_parent=parent)              #找到input元素，可以发送键盘消息
                 self.driver.execute_script('arguments[0].focus()', inp)                        #焦点定位到input
                 time.sleep(0.2)
                 for x in value_to_set:
+                    if x not in values_options:
+                        raise TaError('multiple invalid data!')
                     ActionChains(self.driver).send_keys(x + Keys.ENTER).perform()
                     time.sleep(0.05)
                 return
             else:   # 单选
-                ops = control.find_elements_by_css_selector('option')
                 value_to_set = value.replace('：', ':').split(':')[0]
                 self.driver.execute_script('arguments[0].setAttribute("style", arguments[1])', control, "display:block")   #将元素设置为可见
                 Select(control).select_by_value(value_to_set)                 #选中值
@@ -199,37 +219,21 @@ class TaTask():
     def set_values(self,eles,datas,remark=None,mode=0):
         '''设置多个参数函数,ele->要设置参数的元素,datas->参数值,'''
         t=time.time()
-        print(remark,mode)
         for key,value in datas.items():
-            self.skip_Exception(lambda :self.set_value(eles[key],value,key,mode=mode),remark=key)
+            if key not in eles or value is None:
+                continue
+            self.skip_Exception(lambda :self.set_value(eles[key],value,key,mode=mode),waitException_time=2,remark=key)
         if remark:
-            print('\033[1;33m{} {}\033[0m'.format(remark,time.time()-t))                    #黄色记录时间
+            print('\033[1;33m{} {}\033[0m'.format(remark,round(time.time()-t,2)))
         self.check_invalid_data()
-
-    def form_submit(self,ele_btn,frames_label=None,waittime=0):
-        '''提交表单,如发现非法数据，则报错'''
-        try:
-            ele_btn.click()
-            ele_label = self.super_find_eles('label',frames=frames_label,find_ele_time=0.2)
-            if ele_label:     #检查是否有报错
-                # ele_label.send_keys(ele_label.text)
-                print('\033[1;31m系统报错：{}\033[0m'.format(ele_label.text))      #红色
-                self.driver.execute_script("arguments[0].scrollIntoView()", ele_label)
-                raise
-        except WebDriverException:
-            time.sleep(waittime)
-            return None
-        time.sleep(waittime)
 
     def check_invalid_data(self,frames_label=None):
         ele_label = self.super_find_eles('label', frames=frames_label, find_ele_time=0.2)
-        if ele_label:
+        if ele_label and ele_label.text!='':
             print('\033[1;31m系统报错：{}\033[0m'.format(ele_label.text))  # 红色
             self.driver.execute_script("arguments[0].scrollIntoView()", ele_label)
-            raise
+            raise TaError('invalid data|{}'.format(ele_label.text))
         return
-
-
 
     def log_write(self,text,fail=False):
         self.log+='{} {} {}\n'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),text,'fail' if fail else 'success')

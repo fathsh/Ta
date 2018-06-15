@@ -1,4 +1,10 @@
 from Ta_task import *
+import pickle
+
+def saveDbase_pickle(filename, object):
+    f=open(filename,'wb')
+    pickle.dump(object,f)
+    f.close()
 
 
 
@@ -6,31 +12,59 @@ class SubTask_insert_code(TaTask):
     '''SubTask_insert_code用于在Ta系统新增代码'''
     def __init__(self):
         TaTask.__init__(self)
-        self.data_show={'基金信息':['序号', '基金代码', '基金名称', '单位净值长度', '分红方式', '托管行名称', '清算批次号', '管理费计提比例(%)',
-                        '投资方向', '份额类别', '最低募集金额', '最高募集金额', '募集起始日期', '巨额赎回比例(%)', '最低资产限额', '最低账户数量',
-                        '最大账户数量', '认购利息处理方式', '基金申请确认天数', '强制赎回方式', '级差控制方式', '级差的处理方式', '存续期数(月)',
-                        '户数限制处理方式', '净值公布频率按月计算方式', '净值公布月', '净值公布频率', '净值公布日', '巨额赎回顺延方式',
-                        '赎回后资产低于最低账面金额处理方式', '赎回最少持有天数', '利息计算是否含费', '按收益率设置费率模式',
-                        '是否只针对有限合伙人计提', '股权收益率类型', '股权收益率(%)', '股权计提比例', '安全垫产品持有天数', '销售商']}
         self.excel_datas={}
         self.onchange_key = ['基金代码','销售商最大折扣','基金管理人','基金申请确认天数']
 
     def get_excel_data(self):
         '''读取excel数据'''
         LazyExcel.ExcelOpen(r'e:\ta\云TA基金信息模板 v2.5（金湖&百川&混沌）.xlsx', 1)
-        sheet_count = int(LazyExcel.SheetCount())
+        f=open('config.cfg')
+        t=eval(f.read())
+        data_show=t['data_show']
+        sheet_show=t['sheet_show']
+        key_map=t['key_map']
+        f.close()
+        excel_datas={}
+        sheet_count = LazyExcel.SheetCount()
         for sheet in range(1, sheet_count + 1):
             sheet_name = getExcelSheetName(sheet)
+            if sheet_name not in sheet_show:
+                continue
             columns_count = getExceltColumns(sheet)
             datas = []
             for i in range(2, 999):
-                data_tmp = get_row_data(sheet, i, columns_count)
+                data_tmp = get_row_data(sheet, i, columns_count,key_map)
                 if data_is_valid(data_tmp):
-                    datas.append(get_row_data(sheet, i, columns_count))
+                    datas.append(data_tmp)
                 else:
                     break
-            self.excel_datas[sheet_name] = filter([dict(zip(datas[0], x)) for x in datas[1:]],sheet_name,self.data_show)  # 生成字典，去隐藏
-        print(self.excel_datas)
+            if sheet_name=='清算天数设置':
+                datas1=[x[:9] for x in datas]
+                datas2=[x[:3]+x[9:-3] for x in datas]
+                excel_datas['清算天数设置_托管行清算天数设置']=filter([dict(zip(datas1[0], x)) for x in datas1[1:]], None)
+                excel_datas['清算天数设置_销售商清算天数设置'] = filter([dict(zip(datas2[0], x)) for x in datas2[1:]], None)
+            else:
+                excel_datas[sheet_name] = filter([dict(zip(datas[0], x)) for x in datas[1:]],data_show.get(sheet_name))  # 生成字典，去隐藏
+        # print(excel_datas.keys())
+        ret=[]
+        for xx in excel_datas['基金信息']:
+            data_percent_code = {}
+            code=xx['基金名称'] if xx['基金代码']=='' else xx['基金代码']
+            for key,data in excel_datas.items():
+                tmp=[x for x in data if code in [x.get('基金代码'), x.get('基金名称')]]
+                data_percent_code[key] = tmp[0] if len(tmp)==1 else tmp
+            ret.append(data_percent_code)
+        self.excel_datas=ret
+        ret=self.data_pre_treated(ret)
+        # print(ret[0])
+        # exit()
+        return ret
+
+    def data_pre_treated(self,data):
+        for x in data:
+            x['归基金资产比例']['持有天数区间']='' if (x['归基金资产比例']['最低持有天数']=='0' and x['归基金资产比例']['最高持有天数'])\
+                        =='999999999' else '{},{}'.format(x['归基金资产比例']['最低持有天数'],x['归基金资产比例']['最高持有天数'])
+        return data
 
     def login_ta(self):
         '''登录ta系统'''
@@ -48,7 +82,7 @@ class SubTask_insert_code(TaTask):
         '''获取新代码函数'''
         self.driver.switch_to.default_content()
         self.super_click(self.super_find_eles('a[data-text="信息维护"]',log='login_ta',remark='信息维护'))
-        self.super_click(self.super_find_eles('ul.up-sub-list>li',frames='frame-tab-24',remark='基金信息设置'),waittime=0.8)
+        self.super_click(self.super_find_eles('ul.up-sub-list>li',frames='frame-tab-24',remark='基金信息设置'),waittime=1)
         lis_gupiao_gm=self.super_find_eles('#id_0_0>li',frames='frame-tab-132',return_all=True)
         lis_gupiao_sm=self.super_find_eles('#id_1_0>li',return_all=True)       #获取私募-股票下的所有li元素
         lis_qiquan_sm=self.super_find_eles('#id_1_7>li',return_all=True)                               #获取私募-期权下的所有li元素
@@ -58,15 +92,14 @@ class SubTask_insert_code(TaTask):
 
     def add_code(self):
         '''新增代码函数'''
-        # self.skip_Exception(lambda :self.super_find_eles('#new-fund', frames=['frame-tab-132', -1], waittime=1).click())
         self.skip_Exception(lambda :self.super_find_eles('#new-fund', frames=['frame-tab-132', -1]).click())
         datas={'基金模板':'210000201:一对多专户净值型产品子模板1','基金代码':self.new_code,
                '基金名称':'test1','TA名称':'87:广发证券股份有限公司','管理人名称':'gf0002:广发证券柜台交易市场部'}
         # datas['基金代码']='870022'
+        # datas['基金模板']='210022200201:一对多专户净值型产品子模板1'
         eles = self.get_eles_to_set(datas.keys(),frames=['frame-tab-132',-1,-1])
         self.set_values(eles,datas,'add code')
-        self.check_invalid_data()
-        self.form_submit(self.super_find_eles('#dialog-btn-save'))
+        self.super_find_eles('#dialog-btn-save').click()
 
     def copy_code(self):
         '''复制代码'''
@@ -74,32 +107,31 @@ class SubTask_insert_code(TaTask):
         self.code_be_copy='{}{}'.format(self.new_code[:3],int(self.new_code[-3:])-1)      #self.code_be_copy=self.new_code-1
         self.code_be_copy='870022'
         self.skip_Exception(lambda :self.set_value(ele,self.code_be_copy,sel='#fundcode-copy'),remark='copy_code')
-        # print('\033[1;33m{} {}\033[0m'.format('set_value select',time.time()-t))
         self.super_click(self.super_find_eles('#copy-fundinfo'))
 
-    def set_value_after_compare0(self):
+    def set_value_fundInfoBase(self,data_fundInfoBase):
         '''比对之后设置0'''
-        # self.excel_datas['基金信息'][0]['募集起始日期']='2018-05-16'
+        # data_fundInfoBase['募集起始日期']='2018-05-16'
         for i in range(2):
-            result_compare=self.compare_values(self.excel_datas['基金信息'][0],
-                                                        frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_fundInfoBase-frame'],length=59)
+            result_compare=self.compare_values(data_fundInfoBase,
+                                               frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_fundInfoBase-frame'],length=59)
             print(result_compare)
             eles=self.get_eles_to_set(result_compare.keys())
             data={key:value[0] for key,value in result_compare.items() if key!='基金代码'}
-            self.set_values(eles,data,'set_value_after_compare0' if i==0 else 'set_value_after_compare0_repeat',mode=1)
-            result_compare=self.compare_values(self.excel_datas['基金信息'][0],
-                                                        frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_fundInfoBase-frame'],length=59)
+            self.set_values(eles,data,'set_value_fundInfoBase' if i==0 else 'set_value_fundInfoBase_repeat',mode=1)
+            result_compare=self.compare_values(data_fundInfoBase,
+                                            frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_fundInfoBase-frame'],length=59)
             self.check_invalid_data()
             if not result_compare or (len(result_compare)==1 and result_compare['基金代码']):
+            #     self.super_find_eles('#finish',frames='frame-tab-sysinfo_fundInfo-add-fund').click()
                 return
         raise
         #     self.form_submit(self.super_find_eles('#finish',frames='frame-tab-sysinfo_fundInfo-add-fund'),
         #                      frames_label=['frame-tab-sysinfo_fundInfo-add-fund',-1])
 
-    def set_value_after_compare1(self):
+    def set_value_arLimitList(self,data_arLimitList):
         '''比对之后设置1'''
-        ti=time.time()
-        for excel_data in self.excel_datas['产品个户交易限制信息']:
+        for excel_data in data_arLimitList:
             show_data=['客户类型','销售商','首次投资最低金额','最少追加金额','级差金额','最低账面金额']
             excel_data={key:excel_data[key] for key in excel_data if key in show_data}
             if excel_data['客户类型'].split(':')[-1]=='产品':
@@ -109,7 +141,7 @@ class SubTask_insert_code(TaTask):
             table=self.super_find_eles('table.datagrid-htable',frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_arLimitList-frame'],return_all=True)[-1]
             tds=self.super_find_eles('td',ele_parent=table,return_all=True)
             header=[self.driver.execute_script("return arguments[0].innerText", x).replace('\xa0','').strip() for x in tds[2:]]
-            print(header)
+            # print(header)
             table_trs=self.super_find_eles('table.datagrid-btable',return_all=True)[-1]
             trs=self.super_find_eles('tr',ele_parent=table_trs,return_all=True)[::-1]
             tdss=[self.super_find_eles('td',ele_parent=tr,return_all=True) for tr in trs]
@@ -117,17 +149,17 @@ class SubTask_insert_code(TaTask):
             tds=tmp[0] if tmp else None
             data_sys=dict(zip(header,[self.driver.execute_script("return arguments[0].innerText", x).replace('\xa0','').strip()
                                       for x in tds[2:]])) if tds else None
-            excel_data['销售商']='040：xx'
+            # excel_data['销售商']='040：xx'
             result_compare = {}
             if data_sys and data_sys['销售商'] in excel_data['销售商'].split(':')[-1]:
                 print('销售商 correctly!')
-                for k,v in data_sys.items():
-                    if k in ['客户类型', '销售商'] or k not in excel_data:
+                for key,value in data_sys.items():
+                    if key in ['客户类型', '销售商'] or key not in excel_data:
                         continue
-                    if self.compaer_value(excel_data[k],v):
-                        print(k,excel_data[k],v,'correctly!')
+                    if self.compaer_value(excel_data[key],value):
+                        print(key,excel_data[key],value,'correctly!')
                     else:
-                        result_compare[k]=(excel_data[k],v)
+                        result_compare[key]=(excel_data[key],value)
                 print(result_compare)
                 if not result_compare:
                     continue
@@ -144,58 +176,103 @@ class SubTask_insert_code(TaTask):
             eles = self.get_eles_to_set(result_compare.keys() if result_compare else excel_data.keys(),
                                         frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_arLimitList-frame',-1])
             data = {key: value[0] for key, value in result_compare.items() if key != '基金代码'} if result_compare else excel_data
-            self.set_values(eles, data, 'set_value_after_compare1_{}'.format(excel_data['客户类型'].split(':')[-1]))
+            self.set_values(eles, data, 'set_value_arLimitList_{}'.format(excel_data['客户类型'].split(':')[-1]))
             self.super_find_eles('#dialog-btn-save').click()
             self.super_find_eles('td',frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_arLimitList-frame'],waittime=2)
-            # msgbox(1)
-            # exit()
-            # self.super_find_eles('table.datagrid-htable',frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_arLimitList-frame'],return_all=True)[-1]
-        print((time.time()-ti))
 
-    def set_value_after_compare2(self):
+    def set_value_fundParameterEdit(self,data_fundParameterEdit):
         self.super_find_eles('div.fund-tab.clear > ul > li:nth-child(3) > a',
                              frames='frame-tab-sysinfo_fundInfo-add-fund').click()
         for i in range(2):
-            result_compare = self.compare_values(self.excel_datas['基金信息'][0],
-                                            frames=['frame-tab-sysinfo_fundInfo-add-fund','sysInfo_fundParameterEdit-frame'], length=85)
+            result_compare = self.compare_values(data_fundParameterEdit,
+                                    frames=['frame-tab-sysinfo_fundInfo-add-fund','sysInfo_fundParameterEdit-frame'], length=85)
             print(result_compare)
             eles = self.get_eles_to_set(result_compare.keys())
             data = {key: value[0] for key, value in result_compare.items() if key != '基金代码'}
-            self.set_values(eles,data,'set_value_after_compare2' if i==0 else 'set_value_after_compare2_repeat')
-            result_compare = self.compare_values(self.excel_datas['基金信息'][0])
+            self.set_values(eles,data,'set_value_fundParameterEdit' if i==0 else 'set_value_fundParameterEdit_repeat')
+            result_compare = self.compare_values(data_fundParameterEdit)
+            # print(result_compare)
             if not result_compare or (len(result_compare) == 1 and '基金代码' in result_compare):
-                # print('set_value_after_compare0 right')
                 self.super_find_eles('div.fund-tab.clear > ul > li:nth-child(5) > a',
                                      frames='frame-tab-sysinfo_fundInfo-add-fund').click()
                 return
         raise
 
-    def set_value_after_compare3(self):
+    def set_value_fundBelongAssetList(self,data_fundBelongAssetList):
         self.super_find_eles('div.fund-tab.clear > ul > li:nth-child(5) > a',
                              frames='frame-tab-sysinfo_fundInfo-add-fund').click()
-        data={'销售商': '040：全部销售商', '业务名称': '03:赎回', '持有天数区间':'9999999'}
-        print(self.excel_datas['归基金资产比例'][0])
+        print(data_fundBelongAssetList)
+        # data={'销售商': '007：全部销售商', '业务名称': '03:赎回', '持有天数区间':'9999999'}
+        # print(self.excel_datas['归基金资产比例'][0])
         self.super_find_eles('button[name="trading-new"]',
                              frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_fundBelongAssetList-frame']).click()
         eles={'销售商': self.super_find_eles('''select[messages='{required:"请选择销售商！"}']''',frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_fundBelongAssetList-frame',-1]),
               '业务名称': self.super_find_eles('''select[messages='{required:"请选择业务名称！"}']'''),
               '持有天数区间':self.super_find_eles('''input[messages='{floatIntervalCheck:"持有天数区间输入不规范"}']''')}
-        self.set_values(eles,data)
+        self.set_values(eles,data_fundBelongAssetList,'set_value_fundBelongAssetList')
+        eles['持有天数区间'].send_keys(Keys.ENTER)
+        self.super_find_eles('#save').click()
 
-
-
-
-
-
-
-
-
-
-
+    def set_value_fundSetupInfoList(self,data_fundSetupInfoList):
+        '''比对之后设置'''
+        self.super_find_eles('div.fund-tab.clear > ul > li:nth-child(6) > a',
+                             frames='frame-tab-sysinfo_fundInfo-add-fund').click()
+        table = self.super_find_eles('table.datagrid-htable',
+                    frames=['frame-tab-sysinfo_fundInfo-add-fund', 'sysinfo_fundSetupInfoList-frame'],return_all=True)[-1]
+        tds = self.super_find_eles('td', ele_parent=table, return_all=True)
+        header = [self.driver.execute_script("return arguments[0].innerText", x).replace('\xa0', '').strip() for x in
+                  tds[2:]]
+        table_trs = self.super_find_eles('table.datagrid-btable', return_all=True)[-1]
+        tr = self.super_find_eles('tr', ele_parent=table_trs)
+        tds =self.super_find_eles('td', ele_parent=tr, return_all=True)
+        data_sys = dict(zip(header, [self.driver.execute_script("return arguments[0].innerText", x).replace('\xa0', '').strip()
+                         for x in tds[2:]])) if tds else None
+        # excel_data={}
+        # excel_data['利息类别']='F:托管活期'
+        # excel_data['销售商'] = '*：全部'
+        # excel_data['利息起始天数'] = '0'
+        # excel_data['计息结束日期'] = '2019-01-01'
+        excel_data=data_fundSetupInfoList
+        result_compare = {}
+        if data_sys.get('销售商') in excel_data['销售商'].split(':')[-1]:
+            print('销售商 correctly!')
+            for key, value in data_sys.items():
+                if self.compaer_value(excel_data.get(key), value):
+                    print(key, excel_data.get(key), value, 'correctly!')
+                else:
+                    result_compare[key] = (excel_data.get(key), value)
+            if '销售商' in result_compare:
+                result_compare.pop('销售商')
+            # print(excel_data)
+            print(result_compare)
+            if not result_compare:
+                return
+            self.super_find_eles('input', ele_parent=tds[0]).click()
+            self.super_find_eles('button[name="batchEdit"]').click()
+        elif data_sys and data_sys['销售商'] not in excel_data['销售商'].split(':')[-1]:
+            print('销售商 wrong!')
+            self.super_find_eles('input', ele_parent=tds[0]).click()
+            self.super_click(self.super_find_eles('button[name="batchDelete"]'), waittime=1)
+            self.super_click(self.super_find_eles('#batchdelete-sure'), mode=0)
+            self.skip_Exception(lambda: self.super_find_eles('#addButton').click())
+        elif data_sys is None:
+            self.skip_Exception(lambda: self.super_find_eles('#addButton').click())
+        # print('='*100)
+        eles = self.get_eles_to_set(result_compare.keys() if result_compare else excel_data.keys(),
+                                    frames=['frame-tab-sysinfo_fundInfo-add-fund', 'sysinfo_fundSetupInfoList-frame', -1])
+        # print(eles)
+        data = {key: value[0] for key, value in result_compare.items() if
+                key != '基金代码'} if result_compare else excel_data
+        # print(data)
+        self.set_values(eles, data, 'set_value_fundSetupInfoList')
+        self.super_find_eles('#dialog-btn-save').click()
+        self.super_find_eles('td', frames=['frame-tab-sysinfo_fundInfo-add-fund', 'sysinfo_fundSetupInfoList-frame'],
+                             waittime=2)
 
 
     def set_value_after_add_code(self):
         '''基金信息新增'''
+        self.super_find_eles('#finish', frames='frame-tab-sysinfo_fundInfo-add-fund').click()
         data=[{'销售商':'011:xinye,040:lldj,376:陆金所,005:hhg','代销标志':'1:代销'},
               {'销售商': '011:xinye,040:lldj,376:陆金所,005:hhg'},
               {'转换入基金': 'SM0483:xinye', '转换出份额类别': '*:ssd,A:ttt', '销售商': 'GF9:yyrrg',
@@ -204,20 +281,60 @@ class SubTask_insert_code(TaTask):
                '归销售商比例(%)': '30', '归注册机构比例(%)': '50', '费用分成模式': '2', '对方基金名称': 'tttrrdsd'},
               {  # '费用类型':'0:ssd',
                   '销售商': 'GF9:yyrrg', '份额类别': '*:ssd', '业务代码': '02','销售商最大折扣': '0.4'}]
+        # data[0]['销售商']='003:ddd'
         data1={'核对电子合同':'0:否','销售服务费起始日':'2017-08-01','销售服务费截止日':'2098-12-31'}
+
         for i in range(2):
             self.super_click(self.super_find_eles('div.fund-result-list>ul>li:nth-child({}) a'.format(i+1),
-                                                  frames='frame-tab-sysinfo_fundInfo-add-fund'), mode=1, waittime=1)
+                                                  frames='frame-tab-sysinfo_fundInfo-add-fund'), waittime=1)
             eles = self.get_eles_to_set(data[i].keys(), frames=['frame-tab-sysinfo_fundInfo-add-fund', -1])
             self.set_values(eles, data[i], 'set_value_after_add_code{}'.format(i))
             if i==1:
                 eles = self.get_eles_to_set(data1.keys(), frames=['frame-tab-sysinfo_fundInfo-add-fund', -1,-1])
                 self.set_values(eles, data1, 'set_value_after_add_code{}_2'.format(i))
-            self.form_submit(self.super_find_eles('#finish', frames=['frame-tab-sysinfo_fundInfo-add-fund', -1]))\
-                if i==1 else self.form_submit(self.super_find_eles('#dialog-btn-save'))
+            self.super_find_eles('#finish', frames=['frame-tab-sysinfo_fundInfo-add-fund', -1]).click()\
+                if i==1 else self.super_find_eles('#dialog-btn-save').click()
             f = lambda: self.super_find_eles('div.fund-result-list>ul >li:nth-child({})'.format(i+1),
                                              frames='frame-tab-sysinfo_fundInfo-add-fund').get_attribute('innerText')
             self.skip_Exception(f, lambda: f().find(' 完成') > -0)
+
+    def f(self,data):
+        for i in range(2):
+            self.driver.switch_to.default_content()
+            self.super_click(self.super_find_eles('a[data-text="信息维护"]',log='login_ta',remark='信息维护'))
+            ele=self.super_find_eles('ul.menu-tab-list>li:nth-child(4)',frames='frame-tab-24',remark='清算天数设置')
+            self.super_click(ele,waittime=1)
+            li=self.super_find_eles('li',ele_parent=ele,return_all=True)[i]
+        # for i,li in enumerate(lis):
+            if i==0:
+                excel_data=data['清算天数设置_托管行清算天数设置']
+            elif i==1:
+                excel_data = data['清算天数设置_销售商清算天数设置']
+            print(excel_data)
+            # excel_data['基金名称']=self.new_code
+            excel_data['基金名称']='SM0509'
+            keys=list(excel_data.keys())
+            keys.insert(0,keys[-1])
+            excel_data={key:excel_data[key] for key in keys[:-1]}
+            self.super_find_eles('a',ele_parent=li).click()
+            # self.skip_Exception(lambda :self.super_click(self.super_find_eles('button[name="trading-new"]',frames='frame-tab-119',waittime=1),mode=2))
+            self.super_click(self.super_find_eles('button[name="trading-new"]',
+                                                  frames='frame-tab-119' if i==0 else 'frame-tab-161', waittime=1),mode=0)
+            eles=self.get_eles_to_set(frames=['frame-tab-119' if i==0 else 'frame-tab-161',-1])
+            print(eles)
+            self.set_values(eles,excel_data)
+            # if i==1:
+            #     input()
+            self.super_find_eles('#dialog-btn-save').click()
+            # self.driver.refresh()
+            msgbox(1)
+            # self.driver.refresh()
+            if i==1:
+                return
+            # input()
+            # exit()
+
+
     #
     # def del_code(self,code):
     #     self.driver.switch_to.default_content()
@@ -256,10 +373,13 @@ def getExcelrows(sheet):
 def getExceltColumns(sheet):
     return LazyExcel.SheetColumnsCount(sheet)[0]
 
-def get_row_data(sheet,row,columns_count):
+def get_row_data(sheet,row,columns_count,key_map):
     datas=[]
     for column in range(1,columns_count):
-        datas.append(ExcelRead(sheet,row,column))
+        reslut=ExcelRead(sheet,row,column)
+        if reslut in key_map:
+            reslut=key_map[reslut]
+        datas.append(reslut)
     return datas
 
 def data_is_valid(data):
@@ -269,11 +389,13 @@ def data_is_valid(data):
             return True
     return False
 
-def filter(datas,sheet_name,data_show):
+def filter(datas,data_show):
     '''去隐藏'''
+    # print('ttttt',data_show)
+    # print(datas)
     ret=[]
     for data in datas:
         ret.append({key:str(float(value)*100) if key[-3:]=='(%)' else value for key,value in data.items()
-                   if (key in data_show[sheet_name] if sheet_name in data_show else True)})
+                   if (key in data_show if data_show else True)})
     return ret
 

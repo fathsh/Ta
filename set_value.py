@@ -7,9 +7,10 @@ from selenium.webdriver.common.action_chains import ActionChains
 option = webdriver.ChromeOptions()
 option.add_argument('disable-infobars')
 driver = webdriver.Chrome(chrome_options=option)
-input('dd')
+# input('dd')
 driver.get('http://www.baidu.com')
 driver.maximize_window()
+exit()
 a=driver.find_element_by_css_selector('#su').location_once_scrolled_into_view
 ActionChains(driver).send_keys('敬江'+Keys.ENTER).perform()
 

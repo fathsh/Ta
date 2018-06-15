@@ -1,26 +1,51 @@
-# import win32com.client, win32api, win32con, win32gui
-# parent=win32gui.FindWindow(0,'文件上传')
-# hwndChildList=[]
-# win32gui.EnumChildWindows(parent, lambda hwnd, param: param.append(hwnd),  hwndChildList)
-# btn=[x for x in hwndChildList if win32gui.GetWindowText(x)=='打开(&O)'][0]
-# edit=sorted([(win32gui.GetWindowRect(x)[1],x) for x in hwndChildList if win32gui.GetClassName(x)=='Edit'])[1][1]
-# win32api.SendMessage(edit, 0x000C, 0, '文件路径')
-# win32api.PostMessage(btn, win32con.WM_LBUTTONDOWN, 0, 0)
-# win32api.PostMessage(btn, win32con.WM_LBUTTONUP, 0, 0)
+import win32com.client, win32api, win32con, win32gui
+import pickle
+def getExcelSheetName(sheet):
+    return LazyExcel.SheetGetName(sheet)[0]
+
+def getExcelrows(sheet):
+    return LazyExcel.SheetRowsCount(sheet)[0]
+
+def getExceltColumns(sheet):
+    return LazyExcel.SheetColumnsCount(sheet)[0]
+
+def loadDbase_pickle(filename):
+    f = open(filename, 'rb')
+    obj=pickle.load(f)
+    f.close()
+    return obj
 
 
-# print(btn)
-# print(edit)
-# for x in hwndChildList:
-#     # print(win32gui.GetClassName(x))
-#     print(win32gui.GetWindowText(x))
-def f(a):
-    c(lambda :a)
-def c(f1):
-    print(f1())
+# a=[1,2,3]
+# a.insert(0,4)
+# print(a)
 
-a=[1,2,3]
-print(a[::-1])
+di={'a':1,'b':2}
+di['c']=3
+list(di.keys())[::-1]
+print(di.fromkeys(list(di.keys())[::-1],di[key]))
+# a=[x for x in di]
+# a.insert(0,a[-1])
+# print(a[:-1])
+
+
+#
+# LazyExcel = win32com.client.Dispatch('Lazy.LxjExcel')
+# LazyExcel.ExcelOpen(r'e:\ta\云TA基金信息模板 v2.5（金湖&百川&混沌）.xlsx', 1)
+# sheet_count = LazyExcel.SheetCount()
+# for sheet in range(1, sheet_count + 1):
+#     sheet_name = getExcelSheetName(sheet)
+#     if sheet_name not in ['清算天数设置']:
+#         continue
+#     print(sheet_name)
+#     print(getExceltColumns(sheet))
+#
+# def f(a):
+#     c(lambda :a)
+# def c(f1):
+#     print(f1())
+
+
 exit()
 
 
