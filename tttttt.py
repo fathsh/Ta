@@ -1,4 +1,5 @@
 import win32com.client, win32api, win32con, win32gui
+from datetime import datetime
 import pickle
 def getExcelSheetName(sheet):
     return LazyExcel.SheetGetName(sheet)[0]
@@ -14,19 +15,14 @@ def loadDbase_pickle(filename):
     obj=pickle.load(f)
     f.close()
     return obj
+# format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+a={'a':1,'b':2}
+print(a)
+a.pop('a')
+print(a)
 
 
-# a=[1,2,3]
-# a.insert(0,4)
-# print(a)
 
-di={'a':1,'b':2}
-di['c']=3
-list(di.keys())[::-1]
-print(di.fromkeys(list(di.keys())[::-1],di[key]))
-# a=[x for x in di]
-# a.insert(0,a[-1])
-# print(a[:-1])
 
 
 #

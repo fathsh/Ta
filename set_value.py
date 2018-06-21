@@ -1,28 +1,16 @@
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
+import win32com.client, win32api, win32con
+from datetime import datetime
+def ExcelRead(sheet, row, cell):
+    t=LazyExcel.ExcelRead(sheet, row, cell)[0]
+    if isinstance(t,datetime):
+        t=str(t).split(' ')[0]
+    t=str(t)
+    if t=='None':
+        return ''
+    return t[:-2] if t[-2:]=='.0' else t
 
 
-
-option = webdriver.ChromeOptions()
-option.add_argument('disable-infobars')
-driver = webdriver.Chrome(chrome_options=option)
-# input('dd')
-driver.get('http://www.baidu.com')
-driver.maximize_window()
-exit()
-a=driver.find_element_by_css_selector('#su').location_once_scrolled_into_view
-ActionChains(driver).send_keys('敬江'+Keys.ENTER).perform()
-
-input(...)
-driver.quit()
-
-a=driver.find_elements_by_css_selector('table.datagrid-btable')[-1]
-
-driver.find_element_by_css_selector('button[name="batchEdit"]').click()
-
-driver.find_element_by_css_selector('''select[messages='{required:"请选择销售商！"}']''')
-
-driver.find_element_by_css_selector('''select[messages='{required:"请选择业务名称！"}']''')
-
-driver.find_element_by_css_selector('''input[messages='{floatIntervalCheck:"持有天数区间输入不规范"}']''')
+LazyExcel = win32com.client.Dispatch('Lazy.LxjExcel')
+LazyExcel.ExcelOpen(r'e:\ta\云TA基金信息模板 v2.5（金湖&百川&混沌）.xlsx', 1)
+a=ExcelRead(1,2,2)
+print(a)

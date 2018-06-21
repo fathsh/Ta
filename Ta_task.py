@@ -7,8 +7,10 @@ from selenium.webdriver.common.keys import Keys
 import time
 from selenium.webdriver.support.select import Select
 from datetime import datetime
-
-LazyExcel = win32com.client.Dispatch('Lazy.LxjExcel')             #处理excel的函数
+import xlrd
+# import comtypes.client
+# LazyExcel = win32com.client.Dispatch('Lazy.LxjExcel')             #处理excel的函数
+# # LazyExcel=comtypes.client.CreateObject('Lazy.LxjExcel')
 
 class TaError(Exception):
     pass
@@ -18,8 +20,20 @@ class TaTask():
     '''Ta系统自动化框架，self.driver->selenium对象，self.background_color->设置参数的背景色'''
     def __init__(self):
         self.driver = None
-        self.background_color='navajowhite'                #['cornsilk','red','silver','none','navajowhite' ]
+        self.inin_read_config()
         self.log=''
+        # print(self.url)
+        # exit()
+
+
+    def inin_read_config(self):
+        f=open('config.cfg')
+        t=eval(f.read())
+        self.data_show,self.sheet_show,self.key_map,self.background_color,self.url=\
+            {},t['sheet_show'],t['key_map'],t['background_color'],t['url']
+        for key,value in t['data_show'].items():
+            self.data_show[key]=[self.key_map[x] if x in self.key_map else x for x in value]
+        f.close()
 
     def __del__(self):
         print('exit')
@@ -97,26 +111,35 @@ class TaTask():
                 self.log_write(log,fail=True)
             return
 
-    def compare_values(self,data_excel,frames=None,length=None):
+    def compare_values(self,data_excel,frames=None,length=None,data_mode='form',selcet_data_by_value=None):
         '''比对'''
-        data_sys =self.get_data_sys(frames=frames,length=length)
-        # print(data_sys.get('净值公布日'))
-        # print(data_excel.get('净值公布日'))
-        result_compare={}
+        if data_mode=='form':
+            data_sys = self.get_data_sys_form(frames=frames, length=length)
+        else:
+            data_sys,tds=self.get_data_sys_table(selcet_data_by_value,frames=frames)
+            # print(data_sys)
+        result_compare = {}
+        if not data_sys:
+            return result_compare,tds,data_sys
+        # key_not_find=[]
         for key in data_excel:
-            if key not in data_sys:
+            if key not in data_sys :
+                # key_not_find.append(key)
                 continue
-            if self.compaer_value(data_excel[key],data_sys[key]):
-                pass
-                # print(key,data_excel[key],data_sys.get(key),'correctly!')
-            else:
+            if not self.compaer_value(data_excel[key],data_sys[key]):
                 result_compare.update({key:(data_excel[key],data_sys[key])})
-        return result_compare      #such as {'基金名称': ('和聚(玉融)量化空盈9号私募基金', '广发理财-招商-2')}
+        if not self.OTC and result_compare.get('基金代码'):
+            result_compare.pop('基金代码')
+        if data_mode=='form':
+            return result_compare
+        else:
+            return result_compare,tds,data_sys
+        # if key_not_find:
+        #     result_compare['key_not_find']=key_not_find
+        # return result_compare if data_mode=='form' else result_compare,dts     #such as {'基金名称': ('和聚(玉融)量化空盈9号私募基金', '广发理财-招商-2')}
 
     def compaer_value(self,value_excel,value_sys):
         '''compaer_excel_sys_data函数的子函数,value_excel->参数表数据,value_sys->ta系统数据'''
-        # if value_excel != '':                 #取:左边的数据
-        #     value_excel = value_excel.replace('：', ':').split(':')[0]
         try:       #尝试相减比较
             if value_excel != '':  # 取:左边的数据
                 value_excel = value_excel.replace('：', ':').split(':')[0]
@@ -124,11 +147,11 @@ class TaTask():
         except:      #如报错比较字符串
             return True if value_excel == value_sys else False
 
-    def get_data_sys(self,frames=None,log=None,length=None):
+    def get_data_sys_form(self,frames=None,length=None):
         '''取系统参数值,return such as {'基金名称':'广发理财-招商-2'....} '''
         for i in range(5):      #每秒取一次
             try:
-                dts = self.super_find_eles('dt', frames=frames,return_all=True,log=log)
+                dts = self.super_find_eles('dt', frames=frames,return_all=True)
                 dds = self.super_find_eles('dd', return_all=True)
                 if length and len(dds)<length:             #如果字段数量不等于指定数量length，则time.sleep(1)，避免网络延迟原因
                     print(len(dds))
@@ -137,16 +160,26 @@ class TaTask():
                 return dict(zip(self.get_dts_innerTexts(dts),self.get_dds_values(dds)))
             except:
                 time.sleep(1)
-        else:
-            raise
+        raise SystemError('too lag!')
+
+    def get_data_sys_table(self,selcet_data_by_value,frames=None):
+        table = self.super_find_eles('table.datagrid-htable',frames=frames,return_all=True)[-1]
+        tds = self.super_find_eles('td', ele_parent=table, return_all=True)
+        header = [self.driver.execute_script("return arguments[0].innerText", x).replace('\xa0', '').strip() for x in tds[2:]]
+        table_trs = self.super_find_eles('table.datagrid-btable', return_all=True)[-1]
+        # print(header)
+        trs = self.super_find_eles('tr', ele_parent=table_trs, return_all=True)[::-1]
+        tdss = [self.super_find_eles('td', ele_parent=tr, return_all=True) for tr in trs]
+        tmp = [x for x in tdss if x[2].text == selcet_data_by_value] if selcet_data_by_value else tdss
+        tds = tmp[0] if tmp else None
+        return  dict(zip(header, [self.driver.execute_script("return arguments[0].innerText", x).replace('\xa0', '').strip()
+                         for x in tds[2:]])) if tds else None,tds
+
 
     def get_eles_to_set(self,keys=None,frames=None,value='dd'):
         '''取要设置参数的eles,keys->参数表的字段名称，frames->iframe,return such as{'基金名称':ele1....}'''
         def f():
             eles= self.super_find_eles(value, return_all=True, frames=frames)
-            # print(keys)
-            # print(eles)
-            # print(self.get_dts_innerTexts())
             return {key: ele for key, ele in zip(self.get_dts_innerTexts(), eles)
                     if key in keys} if keys else dict(zip(self.get_dts_innerTexts(), eles))
         return self.skip_Exception(f)                #用skip_Exception运行，避免报错
