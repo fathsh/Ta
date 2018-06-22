@@ -8,9 +8,7 @@ import time
 from selenium.webdriver.support.select import Select
 from datetime import datetime
 import xlrd
-# import comtypes.client
-# LazyExcel = win32com.client.Dispatch('Lazy.LxjExcel')             #处理excel的函数
-# # LazyExcel=comtypes.client.CreateObject('Lazy.LxjExcel')
+
 
 class TaError(Exception):
     pass
@@ -20,23 +18,25 @@ class TaTask():
     '''Ta系统自动化框架，self.driver->selenium对象，self.background_color->设置参数的背景色'''
     def __init__(self):
         self.driver = None
-        self.inin_read_config()
+        self.new_code=None
+        self.log_handle=open('log.txt','w',encoding='utf-8')
         self.log=''
         # print(self.url)
         # exit()
 
 
-    def inin_read_config(self):
+    def read_config(self):
         f=open('config.cfg')
         t=eval(f.read())
+        key_name='otc' if self.otc else 'not_otc'
         self.data_show,self.sheet_show,self.key_map,self.background_color,self.url=\
-            {},t['sheet_show'],t['key_map'],t['background_color'],t['url']
-        for key,value in t['data_show'].items():
+            {},t['sheet_show'],t[key_name]['key_map'],t['background_color'],t['url']
+        for key,value in t[key_name]['data_show'].items():
             self.data_show[key]=[self.key_map[x] if x in self.key_map else x for x in value]
         f.close()
 
-    def __del__(self):
-        print('exit')
+    # def __del__(self):
+    #     print('exit')
 
     def skip_Exception(self,callback,callbak2=None,waitException_time=5,remark=None):
         '''忽略报错函数，解决以下问题：
@@ -50,7 +50,7 @@ class TaTask():
             except Exception as e:
                 if not flag:
                     flag=True
-                    print('\033[1;31m{}\n{}\n{} \033[0m'.format(e,callback,remark))
+                    print('\033[1;31m{}\n{}\n{}\033[0m'.format(e,callback,remark))
                 print('\033[1;31m{}\033[0m'.format(i+1))
                 t=e
             time.sleep(0.5)
@@ -68,7 +68,7 @@ class TaTask():
             pass
         time.sleep(waittime)
 
-    def super_find_eles(self,value,by=By.CSS_SELECTOR,find_ele_time=5,ele_parent=None,frames=None,remark=None,return_all=False,waittime=None,log=None):
+    def super_find_eles(self,value,by=By.CSS_SELECTOR,find_ele_time=5,ele_parent=None,frames=None,remark=None,return_all=False,waittime=None):
         '''定位元素函数，默认参数：by=By.CSS_SELECTOR->查找方式，默认用CSS,find_ele_time=5->查找时间，默认5秒,ele_parent=None->父元素
         frames=None->iframe,remark=None->描述,return_all=False->是否返回所有，默认只会返回一个元素,
         waittime=None->找到元素之后等待时间,log=None->写入log的内容'''
@@ -96,8 +96,8 @@ class TaTask():
                     time.sleep(waittime)
                 # print('{} find the element{} 【{}】 find time:{}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 #                                         's' if return_all else '',remark if remark else value,i))
-                if log:
-                    self.log_write(log)
+                # if log:
+                #     self.log_write(log)
                 return eles if return_all else eles[0]
             else:                       #找不到元素，返回[]
                 pass
@@ -107,8 +107,8 @@ class TaTask():
         else:                         #在find_ele_time时间内找不到元素
             if value not in ['label']:
                 print('\033[1;31mcan not find element!{}\033[0m'.format(remark if remark else value))       #红色字体显示
-            if log:
-                self.log_write(log,fail=True)
+            # if log:
+            #     self.log_write(log,fail=True)
             return
 
     def compare_values(self,data_excel,frames=None,length=None,data_mode='form',selcet_data_by_value=None):
@@ -128,7 +128,7 @@ class TaTask():
                 continue
             if not self.compaer_value(data_excel[key],data_sys[key]):
                 result_compare.update({key:(data_excel[key],data_sys[key])})
-        if not self.OTC and result_compare.get('基金代码'):
+        if not self.otc and result_compare.get('基金代码'):
             result_compare.pop('基金代码')
         if data_mode=='form':
             return result_compare
@@ -218,11 +218,7 @@ class TaTask():
             else:
                 msgbox('set value wrong!   {}'.format(value))
                 return
-            #     control.clear()
-            #     control.send_keys(value)
-            #     raise
         elif control.tag_name == 'select':                #下拉框
-
             parent = self.driver.execute_script('return arguments[0].parentNode', control)     #找到dd元素
             if control.get_attribute('multiple')=='true':    #多选
                 options = self.super_find_eles('option', ele_parent=control,return_all=True)
@@ -268,8 +264,9 @@ class TaTask():
             raise TaError('invalid data|{}'.format(ele_label.text))
         return
 
-    def log_write(self,text,fail=False):
-        self.log+='{} {} {}\n'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),text,'fail' if fail else 'success')
+    def log_write(self,text):
+        self.log+='{} {}\n'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),text)
+        self.log_handle.write('{} {}\n'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),text))
 
 def msgbox(text,method=0,btmod=0):
     '''弹窗函数'''

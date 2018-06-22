@@ -2,64 +2,26 @@ from Ta_task import *
 from SubTask_insert_code import *
 
 
-def error(e):
+def error(ta,e):
     if e.find('Message: Cannot locate option with value:') >= 0:
-        print('单选下拉框数据非法，{}'.format(e))
+        msgbox('单选下拉框数据非法，{}|code={}'.format(e,ta.new_code))
     if e.find('multiple invalid data') >= 0:
-        print('多选下拉框数据非法，{}'.format(e))
+        msgbox('多选下拉框数据非法，{}|code={}'.format(e,ta.new_code))
     if e.find('invalid data') >= 0:
-        print('数据非法，{}'.format(e))
-    input('press a key')
+        msgbox('数据非法，{}|code={}'.format(e,ta.new_code))
+    # input('press a key')
 
-def main():
-    ta = SubTask_insert_code()
-    ta.get_excel_data_raw()
-    datas=ta.stack_datas()
-    datas=ta.data_pre_treated(datas)
-    print(datas)
-    # exit()
-    # datas=ta.get_excel_data()
-    # print(datas)
-    ta.login_ta()
-    # exit()
-    # co = 0
-    # while True:
-    for data in datas:
-        data_fundInfoBase_fundParameterEdit=data['基金信息']
-        [data_fundInfoBase_fundParameterEdit.update({key: value})
-                                             for key, value in data['集中备份信息-第一次填写'].items() if key not in data['基金信息']]
-        # print(data_fundInfoBase_fundParameterEdit)
-        t = time.time()
-        ta.get_new_code(data_fundInfoBase_fundParameterEdit['基金代码'])
-        ta.add_code(data_fundInfoBase_fundParameterEdit['基金名称'])
-        ta.copy_code()
-        ta.set_value_fundInfoBase(data_fundInfoBase_fundParameterEdit)
-        ta.set_value_arLimitList(data[ '产品个户交易限制信息'])
-        ta.set_value_fundParameterEdit(data_fundInfoBase_fundParameterEdit)
-        ta.set_value_fundBelongAssetList(data['归基金资产比例'])
-        ta.set_value_fundSetupInfoList(data['基金成立信息'])
-        # input()
-        # exit()
-        ta.set_value_fundInfo_add_fund(data_fundInfoBase_fundParameterEdit['销售商'])
-        ta.set_value_frame_tab_119_161(data)
-        print('\033[1;33m{}_total time: {}\033[0m'.format(ta.new_code, round(time.time() - t,2)))
-        exit()
-        # continue
-        input('press ENTER to continue')
-        # exit()
-        ta.driver.refresh()
-        #
-        # break
-        # ta.del_code(ta.new_code)
-    # input('press ENTER to exit')
-    # msgbox(ta.log)
-    ta.driver.quit()
+# def main():
+#     ta = SubTask_insert_code()
+#     ta.run()
 
 if __name__=="__main__":
     try:
-        main()
+        ta = SubTask_insert_code()
+        ta.run()
+        # print(ta.log)
     except TaError as e:
-        error(str(e))
+        error(ta,str(e))
 
 
 
