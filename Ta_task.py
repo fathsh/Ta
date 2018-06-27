@@ -19,39 +19,48 @@ class TaTask():
     def __init__(self):
         self.driver = None
         self.new_code=None
+        self.config=self.read_config()
         self.log_handle=open('log.txt','w',encoding='utf-8')
         self.log=''
-        # print(self.url)
+        self.result={}
+        # print(self.log_level,type(self.log_level))
         # exit()
 
 
     def read_config(self):
         f=open('config.cfg')
         t=eval(f.read())
-        key_name='otc' if self.otc else 'not_otc'
-        self.data_show,self.sheet_show,self.key_map,self.background_color,self.url=\
-            {},t['sheet_show'],t[key_name]['key_map'],t['background_color'],t['url']
-        for key,value in t[key_name]['data_show'].items():
-            self.data_show[key]=[self.key_map[x] if x in self.key_map else x for x in value]
+        # key_name='otc' if self.otc else 'not_otc'
+        self.sheet_show,self.background_color,self.url,self.log_level,self.excel_path=\
+            t['sheet_show'],t['background_color'],t['url'],t['log_level'],t['excel_path']
+        # for key,value in t[key_name]['data_show'].items():
+        #     self.data_show[key]=[self.key_map[x] if x in self.key_map else x for x in value]
         f.close()
+        return t
+        # print(self.log_level)
+        # exit()
 
     # def __del__(self):
     #     print('exit')
+
+    def reat_fun(self,callback,callbak2,total_time=3):
+        for i in range(total_time):
+            callback()
+            if callbak2():
+                return
+            time.sleep(1)
+
 
     def skip_Exception(self,callback,callbak2=None,waitException_time=5,remark=None):
         '''忽略报错函数，解决以下问题：
         因网页跳转的不确定，程序在运行过程会遇到很多不确定的报错，此时需要等待一段时间再运行代码
         Example:self.skip_Exception(lambda :ele.click()),'''
-        flag=False
         for i in range(waitException_time*2):
             try:
-                if (callbak2 and callbak2()) or (callbak2 is None):
-                    return callback()
+                return callback()
             except Exception as e:
-                if not flag:
-                    flag=True
+                if not str(e).startswith('Message: unknown error: Element <button type="button" id="addButton"'):
                     print('\033[1;31m{}\n{}\n{}\033[0m'.format(e,callback,remark))
-                print('\033[1;31m{}\033[0m'.format(i+1))
                 t=e
             time.sleep(0.5)
         raise TaError('{}|{}'.format(t,remark))
@@ -111,32 +120,27 @@ class TaTask():
             #     self.log_write(log,fail=True)
             return
 
-    def compare_values(self,data_excel,frames=None,length=None,data_mode='form',selcet_data_by_value=None):
-        '''比对'''
+    def compare_values(self,data_excel,frames=None,length=None,data_mode='form',selcet_data_by_value=None,filter=[]):
+        '''return such as{'募集截止日期': ('2013-03-14', '2016-02-02')}'''
         if data_mode=='form':
             data_sys = self.get_data_sys_form(frames=frames, length=length)
         else:
             data_sys,tds=self.get_data_sys_table(selcet_data_by_value,frames=frames)
-            # print(data_sys)
         result_compare = {}
         if not data_sys:
             return result_compare,tds,data_sys
-        # key_not_find=[]
         for key in data_excel:
             if key not in data_sys :
-                # key_not_find.append(key)
                 continue
             if not self.compaer_value(data_excel[key],data_sys[key]):
                 result_compare.update({key:(data_excel[key],data_sys[key])})
-        if not self.otc and result_compare.get('基金代码'):
-            result_compare.pop('基金代码')
+        if not self.otc:
+            filter.append('基金代码')
+        result_compare={key:value for key,value in result_compare.items() if key not in filter}
         if data_mode=='form':
             return result_compare
         else:
             return result_compare,tds,data_sys
-        # if key_not_find:
-        #     result_compare['key_not_find']=key_not_find
-        # return result_compare if data_mode=='form' else result_compare,dts     #such as {'基金名称': ('和聚(玉融)量化空盈9号私募基金', '广发理财-招商-2')}
 
     def compaer_value(self,value_excel,value_sys):
         '''compaer_excel_sys_data函数的子函数,value_excel->参数表数据,value_sys->ta系统数据'''
@@ -194,7 +198,7 @@ class TaTask():
         '''取参数值，dds->参数值元素,return such as['广发理财-招商-2','870022'...]'''
         return [self.driver.execute_script('return arguments[0].querySelector("select,input").value', x) for x in dds]      #用js，提高效率
 
-    def set_value(self,ele,value,key=None,sel=None,mode=0):
+    def set_value(self,ele,value,key=None,sel=None):
         '''设置一个参数函数,ele->要设置参数的元素,value->参数值,key=None->字段名称,sel->span标签的selector'''
         control=ele if ele.tag_name in ["select", "input"] else self.skip_Exception(
             lambda :self.super_find_eles('select,input',ele_parent=ele))         #定位到select或者input标签
@@ -245,28 +249,35 @@ class TaTask():
                 self.driver.execute_script('arguments[0].setAttribute("style", arguments[1])', control, "display:none")
                 return
 
-    def set_values(self,eles,datas,remark=None,mode=0):
+    def set_values(self,eles,datas,remark=None):
         '''设置多个参数函数,ele->要设置参数的元素,datas->参数值,'''
         t=time.time()
         for key,value in datas.items():
+            # print(key,value)
             if key not in eles or value is None:
                 continue
-            self.skip_Exception(lambda :self.set_value(eles[key],value,key,mode=mode),waitException_time=2,remark=key)
+            self.skip_Exception(lambda :self.set_value(eles[key],value,key),waitException_time=2,remark=key)
+            # if remark=='22':
+            #     input()
         if remark:
             print('\033[1;33m{} {}\033[0m'.format(remark,round(time.time()-t,2)))
         self.check_invalid_data()
 
     def check_invalid_data(self,frames_label=None):
-        ele_label = self.super_find_eles('label', frames=frames_label, find_ele_time=0.2)
+        # print(1)
+        ele_label = self.super_find_eles('label', frames=frames_label, find_ele_time=0.5)
         if ele_label and ele_label.text!='':
+        # if ele_label:
             print('\033[1;31m系统报错：{}\033[0m'.format(ele_label.text))  # 红色
             self.driver.execute_script("arguments[0].scrollIntoView()", ele_label)
+            # input()
             raise TaError('invalid data|{}'.format(ele_label.text))
         return
 
-    def log_write(self,text):
-        self.log+='{} {}\n'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),text)
-        self.log_handle.write('{} {}\n'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"),text))
+    def log_write(self,text,newline=True,date_time=True,level=0):
+        self.log+='{} {} {}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S") if date_time else '',text,'\n' if newline else '')
+        if level<=self.log_level:
+            self.log_handle.write('{} {} {}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S") if date_time else '',text,'\n' if newline else ''))
 
 def msgbox(text,method=0,btmod=0):
     '''弹窗函数'''

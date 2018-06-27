@@ -18,7 +18,6 @@ driver.switch_to.frame('sysinfo_fundInfoBase-frame')
 dts=driver.find_elements(By.CSS_SELECTOR,'dt')
 dds=driver.find_elements(By.CSS_SELECTOR,'dd')
 dict(zip([x.text for x in dts],[x.text for x in dds]))
-
 driver.find_elements(By.CSS_SELECTOR,'label')
 
 dts[1].location_once_scrolled_into_view
