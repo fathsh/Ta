@@ -8,11 +8,48 @@ import time
 from selenium.webdriver.support.select import Select
 from datetime import datetime
 import xlrd
+import sqlite3
 
 
 class TaError(Exception):
     pass
 
+class Sqlite_api():
+    def __init__(self,db_name,table_name):
+        self.conn=sqlite3.connect(db_name)
+        self.cur=self.conn.cursor()
+        self.table = table_name
+        self.create_table(table_name)
+        self.insert()
+
+    def create_table(self,table_name):
+        sql='CREATE TABLE IF NOT EXISTS {}(id integer primary key autoincrement,'.format(table_name)
+        keys = ['date_time','code','name','result','times','log','data','excel_datas_raw','datas','logs','excel_path']
+        for key in keys:
+            sql += '{} text,'.format(key)
+        sql=sql[:-1]+')'
+        print(sql)
+        self.table_name=table_name
+        self.cur.execute(sql)
+
+    def insert(self):
+        sql='insert into {}(id) values(null)'.format(self.table_name)
+        self.cur.execute(sql)
+        self.conn.commit()
+        self.cur.execute("select * from {} order by id desc LIMIT 1".format(self.table_name))
+        self.last_id = self.cur.fetchone()[0]
+
+    def update(self,data,last_id=None):
+        last_id=last_id if last_id else self.last_id
+        tmp=''
+        parms=[]
+        for key,value in data.items():
+            tmp+='{}=?,'.format(key)
+            parms.append(str(value))
+        parms.append(last_id)
+        sql='UPDATE {} SET {} WHERE id=?'.format(self.table_name,tmp[:-1])
+        self.cur.execute(sql,parms)
+        self.conn.commit()
 
 class TaTask():
     '''Ta系统自动化框架，self.driver->selenium对象，self.background_color->设置参数的背景色'''
@@ -21,27 +58,18 @@ class TaTask():
         self.new_code=None
         self.config=self.read_config()
         self.log_handle=open('log.txt','w',encoding='utf-8')
-        self.log=''
-        self.result={}
-        # print(self.log_level,type(self.log_level))
-        # exit()
-
+        self.log_all=''
+        self.log_code=''
+        self.db=Sqlite_api('Ta.db','job')
+        self.first_id=self.db.last_id
 
     def read_config(self):
         f=open('config.cfg')
         t=eval(f.read())
-        # key_name='otc' if self.otc else 'not_otc'
         self.sheet_show,self.background_color,self.url,self.log_level,self.excel_path=\
             t['sheet_show'],t['background_color'],t['url'],t['log_level'],t['excel_path']
-        # for key,value in t[key_name]['data_show'].items():
-        #     self.data_show[key]=[self.key_map[x] if x in self.key_map else x for x in value]
         f.close()
         return t
-        # print(self.log_level)
-        # exit()
-
-    # def __del__(self):
-    #     print('exit')
 
     def reat_fun(self,callback,callbak2,total_time=3):
         for i in range(total_time):
@@ -127,6 +155,10 @@ class TaTask():
         else:
             data_sys,tds=self.get_data_sys_table(selcet_data_by_value,frames=frames)
         result_compare = {}
+        # print('='*100)
+        # print(data_excel)
+        # print(data_sys)
+        # print('='*100)
         if not data_sys:
             return result_compare,tds,data_sys
         for key in data_excel:
@@ -275,9 +307,12 @@ class TaTask():
         return
 
     def log_write(self,text,newline=True,date_time=True,level=0):
-        self.log+='{} {} {}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S") if date_time else '',text,'\n' if newline else '')
+        log='{} {} {}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S") if date_time else '',text,'\n' if newline else '')
+        self.log_all+=log
+        self.log_code+=log
+        self.db.update({'log':self.log_code})
         if level<=self.log_level:
-            self.log_handle.write('{} {} {}'.format(datetime.now().strftime("%Y-%m-%d %H:%M:%S") if date_time else '',text,'\n' if newline else ''))
+            self.log_handle.write(log)
 
 def msgbox(text,method=0,btmod=0):
     '''弹窗函数'''

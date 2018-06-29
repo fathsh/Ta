@@ -3,19 +3,31 @@ class SubTask_insert_code(TaTask):
     '''SubTask_insert_code用于在Ta系统新增代码'''
 
     def data_pre_treated(self,data):
+        def convert_to_date(data):
+            return data if data=='' else xlrd.xldate.xldate_as_datetime(float(data), 0).strftime("%Y-%m-%d")
         self.log_write('data_pre_treated',newline=False)
         for x in data:
             if self.otc:
-                x['基金信息']['募集截止日期'] = xlrd.xldate.xldate_as_datetime(float(x['基金信息']['募集截止日期']), 0).strftime("%Y-%m-%d")
-                x['基金成立信息']['计息结束日期'] = xlrd.xldate.xldate_as_datetime(float(x['基金成立信息']['计息结束日期']), 0).strftime("%Y%m%d")
+                x['基金信息']['封闭结束日期']=convert_to_date(x['基金信息']['封闭结束日期'])
+                # print(x['基金信息']['封闭结束日期'],type(x['基金信息']['封闭结束日期']))
+                x['基金信息']['成立日期']=convert_to_date(x['基金信息']['成立日期'])
+                x['基金信息']['募集截止日期']=convert_to_date(x['基金信息']['募集截止日期'])
+                x['基金成立信息']['计息结束日期']=convert_to_date(x['基金成立信息']['计息结束日期'])
+                # x['基金信息']['募集截止日期'] = xlrd.xldate.xldate_as_datetime(float(x['基金信息']['募集截止日期']), 0).strftime("%Y-%m-%d")
+                # x['基金成立信息']['计息结束日期'] = xlrd.xldate.xldate_as_datetime(float(x['基金成立信息']['计息结束日期']), 0).strftime("%Y%m%d")
             else:
                 x['基金信息']['管理费计提比例(%)']=str(float(x['基金信息']['管理费计提比例(%)'])*100)
             x['基金信息']['巨额赎回比例(%)']=str(float(x['基金信息']['巨额赎回比例(%)'])*100)
-            x['基金信息']['募集起始日期']=xlrd.xldate.xldate_as_datetime(float(x['基金信息']['募集起始日期']), 0).strftime("%Y-%m-%d")
+            x['基金信息']['募集起始日期']=convert_to_date(x['基金信息']['募集起始日期'])
+            # x['基金信息']['募集起始日期']=xlrd.xldate.xldate_as_datetime(float(x['基金信息']['募集起始日期']), 0).strftime("%Y-%m-%d")
             x['归基金资产比例']['持有天数区间']='' if (x['归基金资产比例']['最低持有天数']=='0' and x['归基金资产比例']['最高持有天数'])\
                         =='999999999' else '{},{}'.format(x['归基金资产比例']['最低持有天数'],x['归基金资产比例']['最高持有天数'])
         self.log_write('...........ok', date_time=False)
+        self.db.update({'datas': data})
+        print(data[0])
+        # exit()
         return data
+
 
     def get_excel_data_raw(self):
         def is_valid(data):
@@ -26,9 +38,6 @@ class SubTask_insert_code(TaTask):
             return False
 # ================================================================
         self.log_write('get_excel_data_raw',newline=False)
-        # path=
-        # workbook = xlrd.open_workbook(r'e:\ta\云TA基金信息模板 v2.5（金湖&百川&混沌）.xlsx')
-        # workbook = xlrd.open_workbook(r'e:\ta\【2018-6-14 20 605 GF0401-GF0405】云TA基金信息模板 - OTC - v2.3.xlsx')
         workbook = xlrd.open_workbook(self.excel_path)
         excel_data_raw = {}
         for sheet in workbook.sheets():
@@ -46,14 +55,13 @@ class SubTask_insert_code(TaTask):
         for key,value in self.config[key_name]['data_show'].items():
             self.data_show[key]=[self.key_map[x] if x in self.key_map else x for x in value]
         self.excel_data_raw = excel_data_raw
+        self.db.update({'excel_datas_raw':excel_data_raw,'excel_path':self.excel_path})
         print('isotc:',self.otc)
         self.log_write('...........ok',date_time=False)
-
-
+        # exit()
 
     def clean_datas(self):
         self.log_write('clean_datas',newline=False)
-        # self.read_config()
         file_datas={}
         datas={key:value for key,value in self.excel_data_raw.items() if key in self.sheet_show}
         for sheet_name,values in datas.items():
@@ -99,6 +107,7 @@ class SubTask_insert_code(TaTask):
                     [x for x in values if x.get('基金代码')==code or x.get('基金名称')==code][0]
             file_datas.append(data_tmp)
         self.log_write('...........ok',date_time=False)
+
         return file_datas
 
     def login_ta(self):
@@ -123,42 +132,22 @@ class SubTask_insert_code(TaTask):
         self.name=data['基金名称']
         self.log_write('='*100,date_time=False)
         self.log_write('get_new_code',newline=False)
-        # self.log_write('{}\n{} get_new_code'.format('='*100,datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         self.driver.switch_to.default_content()
         self.super_click(self.super_find_eles('a[data-text="信息维护"]',remark='信息维护'))
         self.super_click(self.super_find_eles('ul.up-sub-list>li',frames='frame-tab-24',remark='基金信息设置'),waittime=1)
-        if not self.otc:
-            if self.new_code is None:
-                codes=sorted([x.get_attribute('innerText').split('：')[0] for x in self.super_find_eles('#cate_1>dd:not([style]) ul>li',
-                                                                                  frames='frame-tab-132',return_all=True)])
-                self.code_be_copy=codes[-1]
-
-                # print(codes)
-                # exit()
-                # # lis_gupiao_gm=self.super_find_eles('#id_0_0>li',frames='frame-tab-132',return_all=True)
-                # # lis_gupiao_sm=self.super_find_eles('#id_1_0>li',frames='frame-tab-132',return_all=True)                        #获取私募-股票下的所有li元素
-                # print(lis_gupiao_sm)
-                # # input()
-                # lis_qiquan_sm=self.super_find_eles('#id_1_7>li',return_all=True)                               #获取私募-期权下的所有li元素
-                # print(lis_qiquan_sm)
-                # input()
-                # lis=lis_gupiao_sm+lis_qiquan_sm
-                # self.code_be_copy=self.skip_Exception(lambda :sorted([x.get_attribute('innerText') for x in lis])[-1].split('：')[0])     #获取最后一个代码
-                self.new_code = '{}{}'.format(self.code_be_copy[:2],
-                                              int(self.code_be_copy[2:]) + (2 if self.code_be_copy[-1] == '3' else 1))
-            else:
-                self.code_be_copy=self.new_code
-                self.new_code='{}{}'.format(self.code_be_copy[:2],int(self.code_be_copy[2:])+(2 if self.code_be_copy[-1]=='3' else 1))
-        else:
-            if self.new_code is None:
-                self.code_be_copy = 'GF0406'
-            else:
-                self.code_be_copy=self.new_code
-            self.new_code=code
+        codes = sorted([x.get_attribute('innerText').split('：')[0] for x in self.super_find_eles('#cate_1>dd:not([style]) ul>li',
+                        frames='frame-tab-132',return_all=True)])
+        codes=[x for x in codes if x[:2]==('GF' if self.otc else 'SM')]
+        print(codes)
+        self.code_be_copy = self.new_code if self.new_code else codes[-1]
+        self.new_code=code if self.otc else '{}{}'.format(self.code_be_copy[:2],
+                                          int(self.code_be_copy[2:]) + (2 if self.code_be_copy[-1] == '3' else 1))
+        self.new_code=self.new_code if len(self.new_code)==6 else self.new_code[:2]+'0'*(6-len(self.new_code))+self.new_code[2:]
         print(self.code_be_copy)
         print(self.new_code)
         self.log_write('...........ok', date_time=False)
         self.log_write('【new_code={},name={},code_be_copy={}】'.format(self.new_code, self.name, self.code_be_copy),date_time=False)
+        self.db.update({'code':self.new_code,'name':self.name})
         # input()
         # exit()
 
@@ -191,9 +180,11 @@ class SubTask_insert_code(TaTask):
         result_compare=self.compare_values(data_fundInfoBase,
                     frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_fundInfoBase-frame'],length=59,filter=['基金状态'])
         print(result_compare)
+        # input()
         eles=self.get_eles_to_set(result_compare.keys())
         data={key:value[0] for key,value in result_compare.items()}
         self.set_values(eles,data,'set_value_fundInfoBase')
+        # input()
         result_compare_after=self.compare_values(data_fundInfoBase,
                     frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_fundInfoBase-frame'],length=59,filter=['基金状态'])
         if not result_compare_after:
@@ -240,11 +231,6 @@ class SubTask_insert_code(TaTask):
             eles = self.get_eles_to_set(result_compare.keys() if data_sys else excel_data.keys(),
                                         frames=['frame-tab-sysinfo_fundInfo-add-fund','sysinfo_arLimitList-frame',-1])
             data = {key: value[0] for key, value in result_compare.items()} if data_sys else excel_data
-            # print(eles)
-            # print(data)
-            # input()
-            # exit()
-            # self.set_values(eles, data, 'set_value_arLimitList_{}'.format(excel_data['客户类型'].split(':')[-1]))
             self.set_values(eles, data)
             # input()
             self.super_find_eles('#dialog-btn-save').click()
@@ -255,6 +241,7 @@ class SubTask_insert_code(TaTask):
         # exit()
 
     def set_value_fundParameterEdit(self,data_fundParameterEdit):
+        # print(data_fundParameterEdit)
         self.log_write('set_value_fundParameterEdit',newline=False)
         self.reat_fun(lambda :self.super_find_eles('div.fund-tab.clear > ul > li:nth-child(3) > a',
             frames='frame-tab-sysinfo_fundInfo-add-fund').click(),lambda :self.super_find_eles('dt',
@@ -275,6 +262,8 @@ class SubTask_insert_code(TaTask):
                 self.log_write('...........ok', date_time=False)
                 self.log_write('基金参数查询:{}'.format(log_result_compare if log_result_compare else '【all data compare correctly!】')
                                ,date_time=False,level=1)
+                # input()
+                # exit()
                 return
         raise
 
@@ -296,6 +285,7 @@ class SubTask_insert_code(TaTask):
 
     def set_value_fundSetupInfoList(self,data_fundSetupInfoList):
         '''比对之后设置'''
+        print(data_fundSetupInfoList)
         self.log_write('set_value_fundSetupInfoList',newline=False)
         self.super_find_eles('div.fund-tab.clear > ul > li:nth-child(6) > a',
                              frames='frame-tab-sysinfo_fundInfo-add-fund').click()
@@ -316,7 +306,7 @@ class SubTask_insert_code(TaTask):
             self.super_find_eles('button[name="batchEdit"]').click()
         else:
             print('销售商 and 利息类别 wrong!')
-            excel_data['销售商']='GF8:私募直销'
+            # excel_data['销售商']='GF8:私募直销'
             excel_data['计息结束日期']=excel_data['计息结束日期'] if self.otc else '20991231'
             result_compare={key:(value,'') for key,value in excel_data.items() if key in ['销售商','利息类别','利息起始天数','计息结束日期']}
             # self.log_write('基金成立信息:{}'.format(result_compare if result_compare else '【all data compare correctly!】'))
@@ -328,13 +318,17 @@ class SubTask_insert_code(TaTask):
         eles = self.get_eles_to_set(result_compare.keys() if data_sys else excel_data.keys(),
                                     frames=['frame-tab-sysinfo_fundInfo-add-fund', 'sysinfo_fundSetupInfoList-frame', -1])
         data = {key: value[0] for key, value in result_compare.items()} if data_sys else excel_data
-        if data['计息结束日期']:
+        if data.get('计息结束日期') and len(data.get('计息结束日期'))<10:
             data['计息结束日期']='{}-{}-{}'.format(data['计息结束日期'][:4],data['计息结束日期'][4:6],data['计息结束日期'][-2:])
         self.set_values(eles, data, 'set_value_fundSetupInfoList')
-        self.super_find_eles('#dialog-btn-save').click()
+        # self.super_find_eles('#dialog-btn-save').click()
+        self.super_click(self.super_find_eles('#dialog-btn-save'))
+        # input()
         self.log_write('...........ok', date_time=False)
         self.log_write('基金成立信息:{}'.format(result_compare if result_compare else '【all data compare correctly!】'),
                        date_time=False,level=1)
+        # input()
+        # exit()
 
     def set_value_fundInfo_add_fund(self,seller):
         '''基金信息新增'''
@@ -369,21 +363,28 @@ class SubTask_insert_code(TaTask):
         self.log_write('set_value_frame_tab_119_161',newline=False)
         log_result_compare={}
         for i in range(2):
-            key_name='清算天数设置_托管行清算天数设置' if i==0 else '清算天数设置_销售商清算天数设置'
+            key_name='清算天数设置_托管行清算天数设置' if i==1 else '清算天数设置_销售商清算天数设置'
             excel_data=data[key_name]
             excel_data['基金名称']=self.new_code        #这里是代码
             #将excel_data['基金名称']放在前面
             keys=list(excel_data.keys())
             keys.insert(0,keys[-1])
             excel_data={key:excel_data[key] for key in keys[:-1]}
+            # print(excel_data)
             self.skip_Exception(f)
             eles=self.get_eles_to_set(frames=['frame-tab-119' if i==0 else 'frame-tab-161',-1])
             result_compare = self.compare_values(excel_data)
+            # print(key_name,result_compare)
             log_result_compare[key_name]=result_compare
             self.set_values(eles,excel_data)
+            # input()
             self.super_find_eles('#dialog-btn-save').click()
+            # input()
+            # exit()
         self.log_write('...........ok', date_time=False)
         self.log_write(log_result_compare,date_time=False,level=1)
+        # input()
+        # exit()
 
     def run(self):
         self.get_excel_data_raw()
@@ -393,8 +394,11 @@ class SubTask_insert_code(TaTask):
         # print(datas[0])
         # exit()
         self.login_ta()
-        for data in datas:
-            # print(data)
+        for i,data in enumerate(datas):
+            if i>0:
+                self.log_code=''
+                self.db.insert()
+            self.db.update({'date_time':datetime.now().strftime("%Y-%m-%d %H:%M:%S"),'data':data})
             data_fundInfoBase_fundParameterEdit = data['基金信息']
             [data_fundInfoBase_fundParameterEdit.update({key: value})
              for key, value in data['集中备份信息-第一次填写'].items() if key not in data['基金信息']]
@@ -403,9 +407,7 @@ class SubTask_insert_code(TaTask):
             self.add_code()
             self.copy_code()
             self.set_value_fundInfoBase(data_fundInfoBase_fundParameterEdit)
-            # exit()
             self.set_value_arLimitList(data['产品个户交易限制信息'])
-            # exit()
             self.set_value_fundParameterEdit(data_fundInfoBase_fundParameterEdit)
             self.set_value_fundBelongAssetList(data['归基金资产比例'])
             self.set_value_fundSetupInfoList(data['基金成立信息'])
@@ -413,9 +415,8 @@ class SubTask_insert_code(TaTask):
             self.set_value_frame_tab_119_161(data)
             # print('\033[1;33m{}_total time: {}\033[0m'.format(self.new_code, round(time.time() - t, 2)))
             self.log_write('{} total time: {}'.format(self.new_code, round(time.time() - t, 2)))
-            self.result[self.new_code]='set success'
-            # print(self.log)
-            break
+            self.db.update({'result':'success','times':round(time.time() - t, 2)})
+            # break
             self.driver.refresh()
 
     def error(self,e):
@@ -435,10 +436,13 @@ class SubTask_insert_code(TaTask):
             self.error(str(e))
         finally:
             print('close')
+            self.db.update({'logs':self.log_all},self.first_id)
             if self.driver:
                 #msgbox('accept to exit program')
                 self.driver.quit()
             self.log_handle.close()
+            self.db.cur.close()
+            self.db.conn.close()
 
 
 
