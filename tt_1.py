@@ -32,22 +32,9 @@ js='document.getElementById("frame-tab-132").contentWindow.document.getElementBy
 contentWindow.document.getElementById("sysinfo_fundInfoBase-frame").contentWindow.document.getElementById("infoForm")'
 
 
+driver.find_element_by_css_selector('#ui-page-tab-list>li:last-child').get_attribute('innerText')
 
-
-if driver.execute_script('return arguments[0].querySelector("select")',dds[4]):
-    jse.executeScript("arguments[0].setAttribute('style', arguments[1])", div, "height: 1000px")
-
-
-    print('is a select ele')
-else:
-    print('is not a select ele')
-
-
-
-
-
-
-
+driver.find_element_by_css_selector('#ui-page-tab-list>li:last-child>i').click()
 
 
 

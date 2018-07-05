@@ -9,6 +9,7 @@ from selenium.webdriver.support.select import Select
 from datetime import datetime
 import xlrd
 import sqlite3
+import os
 
 
 class TaError(Exception):
@@ -71,11 +72,14 @@ class TaTask():
         f.close()
         return t
 
-    def reat_fun(self,callback,callbak2,total_time=3):
+    def loop_callback_untile_callback2(self,callback,callbak2,callback3=None,total_time=3):
         for i in range(total_time):
             callback()
             if callbak2():
                 return
+            else:
+                if callback3:
+                    callback3()
             time.sleep(1)
 
 
@@ -155,10 +159,10 @@ class TaTask():
         else:
             data_sys,tds=self.get_data_sys_table(selcet_data_by_value,frames=frames)
         result_compare = {}
-        # print('='*100)
-        # print(data_excel)
-        # print(data_sys)
-        # print('='*100)
+        print('='*100)
+        print(data_excel)
+        print(data_sys)
+        print('='*100)
         if not data_sys:
             return result_compare,tds,data_sys
         for key in data_excel:
@@ -208,8 +212,8 @@ class TaTask():
         tdss = [self.super_find_eles('td', ele_parent=tr, return_all=True) for tr in trs]
         tmp = [x for x in tdss if x[2].text == selcet_data_by_value] if selcet_data_by_value else tdss
         tds = tmp[0] if tmp else None
-        return  dict(zip(header, [self.driver.execute_script("return arguments[0].innerText", x).replace('\xa0', '').strip()
-                         for x in tds[2:]])) if tds else None,tds
+        innerTexts=[self.driver.execute_script("return arguments[0].innerText", x).replace('\xa0', '').strip()for x in tds[2:]]
+        return  dict(zip(header, innerTexts)) if innerTexts[0]!='' else None,tds
 
 
     def get_eles_to_set(self,keys=None,frames=None,value='dd'):
@@ -327,6 +331,26 @@ def convert_to_list(data):
     '''转换成list，如：'test'->['list'],1->[1] '''
     ret=[]
     return data if isinstance(data,list) else ret.append(data) or ret
+
+def pwd_input():
+    chars = []
+    while True:
+        try:
+            newChar = msvcrt.getch().decode(encoding="utf-8")
+        except:
+            return input("你很可能不是在cmd命令行下运行，密码输入将不能隐藏:")
+        if newChar in '\r\n':  # 如果是换行，则输入结束
+            break
+        elif newChar == '\b':  # 如果是退格，则删除密码末尾一位并且删除一个星号
+            if chars:
+                del chars[-1]
+                msvcrt.putch('\b'.encode(encoding='utf-8'))  # 光标回退一格
+                msvcrt.putch(' '.encode(encoding='utf-8'))  # 输出一个空格覆盖原来的星号
+                msvcrt.putch('\b'.encode(encoding='utf-8'))  # 光标回退一格准备接受新的输入
+        else:
+            chars.append(newChar)
+            msvcrt.putch('*'.encode(encoding='utf-8'))  # 显示为星号
+    return (''.join(chars))
 
 
 
